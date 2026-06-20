@@ -31,7 +31,7 @@ USAGE
 DEPS: websockets  (stdlib for everything else)
 """
 
-import asyncio, json, time, argparse, signal, sys
+import asyncio, json, time, argparse, sys
 from datetime import datetime, timezone
 
 try:

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BRTI · Kalshi Arbitrage Terminal</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ===================== STATUS BAR ===================== -->
+    <div id="statusbar">
+      <div class="stat" style="min-width:150px">
+        <span class="label"><span id="conn-dot" class="dot"></span>Market</span>
+        <span class="val mono" id="s-ticker">—</span>
+      </div>
+      <div class="stat" id="s-countdown-box">
+        <span class="label">Closes in</span>
+        <span class="val mono" id="s-countdown">--:--</span>
+      </div>
+      <div class="stat big">
+        <span class="label">BRTI proxy</span>
+        <span class="val mono" id="s-brti">—</span>
+      </div>
+      <div class="stat">
+        <span class="label">Strike</span>
+        <span class="val mono" id="s-strike">—</span>
+      </div>
+      <div class="venues" id="s-venues"><!-- venue tiles injected --></div>
+      <div class="stat">
+        <span class="label">YES bid / ask</span>
+        <span class="val mono"><span id="s-bid">—</span> / <span id="s-ask">—</span></span>
+      </div>
+      <div class="stat big">
+        <span class="label">YES mid</span>
+        <span class="val mono" id="s-mid">—</span>
+      </div>
+      <div class="stat">
+        <span class="label">Fair <span class="badge">PROXY</span></span>
+        <span class="val mono" id="s-fair">—</span>
+      </div>
+      <div class="stat big">
+        <span class="label">Signal (mid−fair) <span class="badge">PROXY</span></span>
+        <span class="val mono" id="s-signal">—</span>
+      </div>
+      <div class="stat">
+        <span class="label">BRTI spread</span>
+        <span class="val mono" id="s-spread">—</span>
+      </div>
+      <div class="stat">
+        <span class="label">Kalshi latency</span>
+        <span class="val mono" id="s-age">—</span>
+      </div>
+    </div>
+
+    <!-- ===================== TOOLBAR ===================== -->
+    <div id="toolbar">
+      <div class="group">
+        <span class="lbl">Window</span>
+        <button class="tbtn" data-win="30">30s</button>
+        <button class="tbtn" data-win="60">1m</button>
+        <button class="tbtn" data-win="300">5m</button>
+        <button class="tbtn" data-win="900">15m</button>
+        <button class="tbtn" data-win="0">Full</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <button class="tbtn active" id="btn-follow">Auto-follow ●</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <span class="lbl">Draw</span>
+        <button class="tbtn" id="btn-hline">＋H Line</button>
+        <button class="tbtn" id="btn-mark">＋Mark</button>
+        <button class="tbtn" id="btn-note">＋Note</button>
+        <button class="tbtn" id="btn-clear">Clear</button>
+      </div>
+    </div>
+
+    <!-- ===================== CHARTS ===================== -->
+    <div id="charts">
+      <div class="pane-wrap" id="pane-price">
+        <div class="pane-title">Price · USD</div>
+        <div class="legend">
+          <span class="lg-brti">BRTI</span>
+          <span class="lg-cb">Coinbase</span>
+          <span class="lg-kr">Kraken</span>
+        </div>
+        <div class="pane" id="chart-price"></div>
+      </div>
+      <div class="pane-wrap" id="pane-prob">
+        <div class="pane-title">Probability / Signal · 0–100</div>
+        <div class="legend">
+          <span class="lg-mid">YES mid</span>
+          <span class="lg-fair">Fair (proxy)</span>
+          <span class="lg-sig">Signal</span>
+        </div>
+        <div class="pane" id="chart-prob"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TradingView lightweight-charts (standalone global: LightweightCharts) -->
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

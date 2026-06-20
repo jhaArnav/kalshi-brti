@@ -17,7 +17,12 @@ data_store/
 # Secrets / config
 .env
 *.key
+*.pem
 config/secrets.*
 
 # OS
 .DS_Store
+
+# Browser/test artifacts
+.playwright-mcp/
+*.png

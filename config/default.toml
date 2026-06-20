@@ -1,0 +1,70 @@
+# Default research configuration for the Kalshi 15m BTC fair-value/lag system.
+# Everything tunable lives here -- nothing cost/latency/threshold-related is
+# hardcoded in the engine. Two fee profiles are modeled because any edge that
+# only survives at zero fees has an expiration date (Kalshi promo zero-fee).
+
+[data]
+# Spot leader feed: log both, choose leader empirically from the data.
+spot_venues = ["Coinbase", "Kraken"]
+brti_staleness_secs = 5.0          # drop a venue mid older than this
+log_format = "parquet"             # parquet | sqlite
+log_dir = "data_store"
+flush_every_secs = 1.0             # daemon must flush; stdout/file buffering bites
+
+[kalshi]
+rest_base = "https://api.elections.kalshi.com/trade-api/v2"
+ws_base   = "wss://api.elections.kalshi.com/trade-api/ws/v2"
+series_ticker = "KXBTC15M"
+poll_interval_secs = 1.0           # snapshot cadence for the synced logger
+# auth secrets come from .env, never from this file
+
+[costs]
+# Fills happen at the touch, never mid.
+fill_side = "touch"                # touch = buy@ask / sell@bid
+slippage_cents = 0.0               # extra adverse cents beyond the touch
+
+[costs.fees.zero]
+# Kalshi promo zero-fee period.
+maker_bps = 0.0
+taker_per_contract = 0.0
+
+[costs.fees.realistic]
+# Kalshi fee ~ 0.07 * price * (1 - price) per contract, rounded up to a cent.
+# Modeled as a function in execution.py; this is the coefficient.
+trade_fee_coeff = 0.07
+maker_per_contract = 0.0
+
+[latency]
+decision_to_fill_ms = 300          # round-trip decision -> ack; instant fills lie
+quote_age_tolerance_ms = 1000      # ignore signal computed on staler quotes
+
+[vol]
+model = "ewma"                     # ewma | rolling | garch
+ewma_lambda = 0.94                 # RiskMetrics default; tunable / stress-tested
+ewma_min_obs = 30
+return_sampling_secs = 1.0         # index return sampling interval
+
+[settlement]
+# Settlement is BRTI averaged over the final window. Edge lives on PERSISTENT
+# mid-window moves; reverting spikes must not be rewarded.
+averaging_window_secs = 60.0
+
+[signal]
+# signal = kalshi_price - model_fair_value ; thresholds are free params ->
+# fit on train walk-forward window only, validate OOS. Never curve-fit here.
+entry_threshold = 0.05             # placeholder; set by walk-forward fit
+horizon_secs = 30                  # predict contract move over next N secs
+
+[backtest]
+random_seed = 42                   # seed the random-entry control for reproducibility
+random_control_trials = 1000
+walkforward_train_frac = 0.6
+walkforward_n_splits = 4
+
+[risk]
+# Phase 3 only -- inert until real-money is explicitly approved.
+enabled = false
+max_contracts_per_trade = 1
+bankroll_cap_usd = 50.0
+daily_loss_limit_usd = 10.0
+kill_switch = true
