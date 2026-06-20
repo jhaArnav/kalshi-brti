@@ -95,20 +95,31 @@ retail is the natural taker feeding ~1.75¢ each way to the MMs.**
 1. **YES base-rate asymmetry — ANSWERED, NO.** Predicted ~50.2–50.7%; our 2,996-
    window sample shows 48.5% (no positive tilt) and ties 0.03%. Fails the
    ~51.75% break-even. (See S1/S2.)
-2. **Conditional fade-the-spike reversal — NEEDS-DATA (next cheap test).** Prior-
-   window return = (expiration_value − floor_strike)/floor_strike; test whether
-   next window's outcome reverts >53.5% after costs. Computable from settlement
-   labels alone — a future iteration will run it.
+2. **Conditional fade-the-spike reversal — FIRST NON-DEAD CANDIDATE (still likely no-edge).**
+   Tested on 2,995 consecutive historical windows (settlement labels only):
+   - Unconditional reversal: **51.4%** — below the 53.5% hurdle (dead).
+   - After a BIG prior move (top 25%, |ret|≥20.9bps): reversal **55.1%** (n=749)
+     — above the gross hurdle.
+   BUT: 55.1% ± 3.6% → **95% CI [51.5%, 58.7%]; lower bound is BELOW 53.5%** (not
+   significant). In-sample, single regime. And it assumes entry near 50¢ — we have
+   NOT checked whether the market already prices the reversal into the next
+   window's OPEN bid/ask. If it does (MMs surely know about mean-reversion), the
+   edge vanishes at executable prices.
+   **Status: the one candidate warranting live testing.** The collector now
+   captures each window's open bid/ask, so over the 48h run we can test the real
+   question: after a big prior move, does buying the reversal side AT THE OPEN
+   PRICE clear costs, out-of-sample? Default expectation: the market prices it in.
 3. **Kalshi↔Polymarket settlement-reference basis — NEEDS-DATA.** Needs a second
    venue feed; relative-value, not arb. Lower priority.
 
 ## Running takeaway
-Every cheap structural edge checked (tie rule, base rate) is ruled out on free
-data; every broader candidate is LIKELY-NO-EDGE after fees+spread+latency, with
-a few NEEDS-DATA items that sit AT (not above) the cost hurdle. This strongly
-matches the prior: **no durable retail edge.** The live kill-test (proxy lag →
-executable edge) and the fade-the-spike reversal are the remaining cheap things
-left to falsify.
+Tie rule and base rate are dead on free data; the 7 broader candidates are all
+LIKELY-NO-EDGE after costs. The single exception: **fade-the-spike** shows a
+suggestive 55.1% reversal after big prior moves (in-sample, CI lower bound still
+below the hurdle, real entry prices untested). It is the ONE thing worth testing
+live. Everything else matches the prior — no durable retail edge. Open tests:
+(a) live kill-test (proxy lag → executable edge), (b) fade-the-spike at real
+open prices, out-of-sample.
 
 ## Verification gaps (web tools rate-limited this pass)
 Could not load Kalshi's fee PDF (KXBTC15M maker-fee bucket unconfirmed) or the
