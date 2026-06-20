@@ -100,7 +100,32 @@ This measurement is now a Phase-0 prerequisite (added to work items).
   exponential depth-utility weighting, outlier screens, 1s sync) — incremental.
 - **Lag measurement:** cross-correlate spot/proxy vs the exact BRTI anchors.
 
-## After bugs are fixed
-- Re-pass the Phase 0 gate (trustworthy feeds + clean logged dataset).
-- THEN Phase 1: real digital-option fair value + vol + the full backtest rigor
-  suite (random control, walk-forward, costs/latency/fees). Only on user go-ahead.
+## CURRENT PLAN — council-approved harness-first kill-test (D15)
+
+Dashboard is DEMOTED. Build the headless harness that can KILL the idea. Order:
+
+### Phase 1A — minimal feed correctness (in progress)
+- Drive Kalshi price from the **`ticker`** channel (canonical); real per-feed
+  data-age (not socket ping). Keep `orderbook_delta` only as a secondary
+  diagnostic, validated by periodic REST reconciliation.
+- Gate: flag stale/crossed/thin/warming/last-60s as unusable.
+- **Headless logger** persists the full field set per tick: raw ticker msgs,
+  REST snapshots, `floor_strike`, `expiration_value` (post-settle), Kalshi
+  bid/ask/last, all 4 proxy constituents + VW mid, proxy opening & closing 60s
+  averages, vol estimate, and data-quality flags — UTC-ms aligned.
+
+### Phase 1B — anchor measurement harness (the kill-test)
+Run on logged data + free settlement labels. Tests (docs/COUNCIL_VERDICT.md):
+opening/closing anchor error · error-vs-volatility · lag sweep · OOS
+calibration · executable survivability (bid/ask + fees + latency 250ms/500ms/1s/2s)
+· seeded random-entry control. Apply the locked go/no-go threshold (D16).
+
+### Phase 1C — diagnostic dashboard (only if 1B is positive)
+Rebuild as a "NO SIGNAL unless proven" truth display, not a trading console.
+
+### Then (only on user go-ahead, only if the gate clears)
+Paper trading → real money at smallest size with hard risk limits.
+
+**Run plan:** stand up 1A, collect ~48h of clean data, build 1B in parallel,
+then analyze against the locked threshold. Expected outcome per council: likely
+a clean "no edge" — which is a win.

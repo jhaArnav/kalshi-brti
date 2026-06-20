@@ -77,3 +77,25 @@ No official lag figure exists; the kickoff's "~8-14s" is uncited third-party
 that conflates BRTI with TWAP. The entire hypothesis rests on this lag, so it
 must be measured empirically before believing any edge. If we can't measure it
 cheaply, that limitation is itself a key finding.
+
+## D15 — Council verdict adopted: harness-first KILL-TEST (unanimous 3/3)
+Gemini + OpenAI 5.5 + Claude Opus all judged: understanding sound; free anchors
+legit for falsification (not a live-BRTI substitute); **build the measurement
+harness FIRST, demote the dashboard**; don't stop but expect "no edge."
+Adopted (see docs/COUNCIL_VERDICT.md):
+- Thesis rewritten to the weaker, honest form (BRTI is not a TWAP). Prior moves down.
+- **Executable edge** framing (`fair−ask−fee` / `bid−fair−fee`), never `kalshi−fair`.
+- **Log-return** anchoring (not additive); **`τ_eff ≈ τ−40s`**; **σ-sensitivity** check.
+- Plan reorder: 1A minimal feed correctness → 1B headless anchor harness → 1C
+  diagnostic dashboard. No real money. No signal UI until proven.
+- Pre-committed go/no-go threshold locked BEFORE looking at data (D16).
+
+## D16 — Pre-committed go/no-go threshold (lock before analysis)
+A "tradable discrepancy" = executable edge (after real fees + half-spread) of
+**≥ ~2¢ net (≈4–5¢ gross)**, **sustained ≥ 2–3s** (reachable at real latency),
+occurring **≥ a handful of times/day**, **NOT** concentrated in stale/crossed/thin
+windows, with **proxy anchor-error < the claimed edge** in those fast-move
+windows, holding **out-of-sample** with **calibrated** probability buckets and
+**beating the seeded random-entry control**. Anything weaker = NO EDGE → stop.
+Marginal/in-sample-only never graduates to capital. Locked now to prevent
+post-hoc rationalization.

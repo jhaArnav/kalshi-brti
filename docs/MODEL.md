@@ -42,45 +42,51 @@ fair = Φ( ln(BRTI_now / floor_strike) / (σ · √τ_eff) )
   real one live; see proxy de-biasing).
 - `σ` — per-√second BRTI vol (EWMA to start; Phase-1 component, stress-tested).
 - `τ_eff` — **effective** time to close, accounting for the 60s closing average.
-  The settled value is an average of the last 60 one-second BRTI ticks, which
-  dampens late moves. Approximate the averaging as reducing the effective
-  horizon (a common approximation: `τ_eff ≈ τ − 30s`, i.e. center-of-averaging;
-  to be calibrated). Under ~60s left the contract is effectively in its
-  averaging zone → treat as unreliable / suppress (see DASHBOARD gates).
+  Council correction: variance of a future Brownian average over the final 60s
+  interval contributes ≈⅓ of the interval, so **`τ_eff ≈ τ − 40s`** (not −30s).
+  Inside the final 60s, switch to a partial-average model or **suppress entirely**.
+- **Vol sensitivity is first-order near the strike.** Always compute fair at
+  σ low / base / high. If the edge flips on a reasonable σ change, it is a vol
+  guess, not a mispricing — not an edge.
 
 The formula SHAPE matches what we had; the fixes are the anchor (`floor_strike`
-= opening avg, not a derived strike), the proxy de-biasing, and `τ_eff`.
+= opening avg, not a derived strike), the LOG-RETURN proxy anchoring (below),
+`τ_eff ≈ τ − 40s`, and the σ-sensitivity check.
 
-## Proxy de-biasing (free, uses the exact BRTI anchor)
+## Proxy anchoring — LOG-RETURN form (council-preferred)
 
-We can't read live BRTI, but `floor_strike` IS an exact BRTI reading at open.
-Our proxy has some slowly-varying bias `b` (proxy = BRTI + b). Estimate it at
-window open and only trust the proxy's **change**:
-
-```
-b_est        = proxy_at_open − floor_strike          # exact at open
-BRTI_now_est = proxy_now − b_est
-             = floor_strike + (proxy_now − proxy_at_open)
-```
-
-Then fair depends only on the proxy's **move since open**, canceling the
-proxy's absolute level error:
+We can't read live BRTI, but `floor_strike` IS an exact BRTI reading at open
+(the opening 60s avg). The contract is literally a return-from-open question, so
+anchor in **log-return** space (cleaner / less brittle than additive de-bias):
 
 ```
-fair ≈ Φ( (proxy_now − proxy_at_open) / (floor_strike · σ · √τ_eff) )
+ln(BRTI_now / floor_strike) ≈ ln(proxy_now / proxy_openAvg)
+→ fair ≈ Φ( ln(proxy_now / proxy_openAvg) / (σ · √τ_eff) )
 ```
 
-This directly attacks bug #3: absolute proxy drift no longer reads as "Kalshi
-cheap/rich." Residual risk = the proxy's tracking error in the *change* during
-fast moves (still real — quantify with the BRTI methodology research).
+where `proxy_openAvg` = our proxy's own opening 60s average (the proxy analogue
+of `floor_strike`). This cancels the proxy's absolute LEVEL bias. It does NOT
+cancel the proxy's **fast-move variance error** — which is exactly the regime
+the signal lives in. So the anchor is a way to MEASURE that error, not erase it.
+
+## Executable edge — NEVER `kalshi − fair` (council, first-order)
+
+The tradeable object is the executable side after fees, not the mid/last:
+
+```
+buy YES :  edge = fair − ask − fee(ask)
+sell YES:  edge = bid  − fair − fee(bid)        fee(P) = roundup(0.07·C·P·(1−P))
+```
+
+A 1–2¢ raw gap is noise. Hurdle ≈ all-in fee + half-spread + adverse selection
++ margin (~4–5¢ round-trip). See go/no-go threshold in docs/COUNCIL_VERDICT.md.
 
 ## Show the decomposition (anti-black-box)
 
-The displayed discrepancy `Kalshi_YES − fair` must be split so the user sees
-what's real:
-- **proxy-drift component** — how much the gap moves if we use raw proxy level
-  vs the de-biased anchor. If this explains the gap, there's no edge.
-- **residual component** — the part left after de-biasing ← the only candidate.
+Split any apparent discrepancy so we see what's real:
+- **proxy-drift component** — gap attributable to raw proxy level vs the
+  log-anchored estimate. If this explains the gap, there's no edge.
+- **residual component** — what's left after anchoring ← the only candidate.
 
 ## Costs (corrected)
 

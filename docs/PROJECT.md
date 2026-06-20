@@ -1,6 +1,23 @@
 # PROJECT — hypothesis, phases, gates
 
-## The hypothesis (falsifiable)
+## The hypothesis (falsifiable) — REWRITTEN per council
+
+Original (now rejected as weak): "BRTI is a smoothed TWAP that lags spot, so
+Kalshi lags fair." BRTI is a real-time order-book aggregation (200ms,
+depth-weighted, outlier-screened), NOT a TWAP — so this premise does not hold.
+
+Current (weaker, honest, testable):
+
+> "Kalshi's binary price may lag the best available estimate of the official
+> opening-to-closing BRTI-average outcome, especially during fast moves, because
+> traders may underreact to settlement-index dynamics, final-minute averaging,
+> and short-horizon volatility."
+
+This admits the edge may be zero. Prior: **very likely no cheap tradeable edge
+unless measurement proves otherwise.** We are running a KILL-TEST, not building a
+bot. See docs/COUNCIL_VERDICT.md.
+
+## The math
 
 > The gap between a model fair value of the 15m binary and the live Kalshi
 > contract price predicts the contract's subsequent move — most strongly in

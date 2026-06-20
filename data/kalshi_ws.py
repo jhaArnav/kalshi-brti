@@ -1,21 +1,24 @@
 """
-Kalshi WebSocket client -- near-zero-latency market data for the dashboard.
+Kalshi WebSocket client -- canonical live price via the `ticker` channel.
 
-REST polling (~1s, ~800ms stale) is useless when the BRTI->Kalshi gap closes
-in 10-14s. This subscribes to the `orderbook_delta` channel, maintains the
-live order book from the initial snapshot + incremental deltas, and exposes
-the current best YES bid/ask/mid with sub-second freshness.
+WHY THIS REWRITE (council + bug #1): reconstructing top-of-book from
+`orderbook_delta` drifts/desyncs and froze into a crossed, stale price that
+produced false signals. Kalshi's `ticker` channel pushes authoritative
+`price_dollars` / `yes_bid_dollars` / `yes_ask_dollars` on every change. We use
+that as canonical, and we report REAL data age (time since the last ticker
+message), NOT socket ping.
 
-Book convention (Kalshi): both YES and NO resting bids are published. A NO bid
-at price p is equivalent to a YES ask at (1 - p). So:
-    best_yes_bid = max YES price with qty > 0
-    best_yes_ask = 1 - (max NO price with qty > 0)
+The `ticker` channel only pushes on CHANGE, so on a quiet market the data age
+grows -- which is the honest truth and exactly what the harness must record.
+We seed an initial top-of-book with one REST GetMarket on each window so we have
+a value before the first change.
 
-Auth: RSA-PSS(SHA256) headers on the connection handshake, signing
-`timestamp_ms + "GET" + "/trade-api/ws/v2"` (same scheme as REST).
+REST is still used for window discovery and the fields the ticker lacks:
+`floor_strike` (locked opening 60s-avg BRTI), `strike_type`, `close_time`,
+`expiration_value` (post-settlement).
 
-Auto-rolls to the next 15m window: a small REST helper finds the current open
-market; when it closes, we resubscribe to the new one.
+`orderbook_delta` is intentionally NOT used here anymore (it remains available
+as a secondary diagnostic, to be validated by periodic REST reconciliation).
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import websockets
 from cryptography.hazmat.primitives import hashes, serialization
@@ -33,20 +37,27 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from data.kalshi_client import KalshiClient, MarketSnapshot
 
 
+def _iso_ms(iso: str | None) -> int | None:
+    if not iso:
+        return None
+    return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000)
+
+
 @dataclass
-class KalshiBook:
-    """Live top-of-book derived from the maintained order book."""
+class KalshiTop:
+    """Canonical live top-of-book from the ticker channel (dollars [0,1])."""
     ticker: str | None = None
-    strike: float | None = None
+    strike: float | None = None             # floor_strike = opening 60s-avg BRTI
     strike_type: str | None = None
     close_ts_ms: int | None = None
+    open_ts_ms: int | None = None
+    expiration_value: float | None = None   # closing 60s-avg BRTI (post-settle)
     yes_bid: float | None = None
     yes_ask: float | None = None
-    crossed: bool = False
-    last_update_ms: float = 0.0
-    # internal price->qty ladders (dollars -> contracts)
-    _yes: dict[float, float] = field(default_factory=dict, repr=False)
-    _no: dict[float, float] = field(default_factory=dict, repr=False)
+    last_price: float | None = None
+    volume: float | None = None
+    last_update_ms: float = 0.0             # wall time of last ticker msg (REAL age)
+    source: str = "init"                   # "ticker" once live, "rest_seed" at start
 
     @property
     def yes_mid(self) -> float | None:
@@ -54,52 +65,22 @@ class KalshiBook:
             return round((self.yes_bid + self.yes_ask) / 2, 4)
         return self.yes_bid if self.yes_bid is not None else self.yes_ask
 
-    def _recompute(self) -> None:
-        yb = max((p for p, q in self._yes.items() if q > 0), default=None)
-        nb = max((p for p, q in self._no.items() if q > 0), default=None)
-        self.yes_bid = round(yb, 4) if yb is not None else None
-        self.yes_ask = round(1.0 - nb, 4) if nb is not None else None
-        # A crossed book (bid > ask) is transient opening-auction noise; flag it
-        # rather than silently emitting an inverted spread.
-        self.crossed = (self.yes_bid is not None and self.yes_ask is not None
-                        and self.yes_bid > self.yes_ask)
+    @property
+    def crossed(self) -> bool:
+        return (self.yes_bid is not None and self.yes_ask is not None
+                and self.yes_bid >= self.yes_ask)
 
-    def apply_snapshot(self, msg: dict) -> None:
-        self._yes.clear()
-        self._no.clear()
-        for side, store in (("yes", self._yes), ("no", self._no)):
-            levels = msg.get(f"{side}_dollars_fp") or msg.get(side) or []
-            for lvl in levels:
-                price = float(lvl[0])
-                qty = float(lvl[1])
-                # legacy integer-cent levels: price is 1..99 -> dollars
-                if price > 1.0:
-                    price = price / 100.0
-                if qty > 0:
-                    store[round(price, 4)] = qty
-        self._recompute()
-
-    def apply_delta(self, msg: dict) -> None:
-        side = msg.get("side")
-        store = self._yes if side == "yes" else self._no
-        price = msg.get("price_dollars")
-        price = float(price) if price is not None else float(msg["price"]) / 100.0
-        if price > 1.0:
-            price = price / 100.0
-        price = round(price, 4)
-        delta = float(msg.get("delta_fp", msg.get("delta", 0)))
-        store[price] = store.get(price, 0.0) + delta
-        if store[price] <= 0:
-            store.pop(price, None)
-        self._recompute()
+    def age_ms(self, now_ms: float | None = None) -> float | None:
+        if not self.last_update_ms:
+            return None
+        return (now_ms or time.time() * 1000) - self.last_update_ms
 
 
 class KalshiWS:
     def __init__(self, cfg):
         self.cfg = cfg
-        self.book = KalshiBook()
-        self._priv = serialization.load_pem_private_key(
-            _read_key(cfg.secrets), password=None)
+        self.book = KalshiTop()            # name kept as .book for back-compat
+        self._priv = serialization.load_pem_private_key(_read_key(cfg.secrets), password=None)
         if not isinstance(self._priv, rsa.RSAPrivateKey):
             raise TypeError("Kalshi WS requires an RSA private key")
         self._rest = KalshiClient(
@@ -110,33 +91,28 @@ class KalshiWS:
         )
         self._ws_path = "/" + cfg.kalshi.ws_base.split("//", 1)[-1].split("/", 1)[-1]
 
+    # --- auth ---
     def _sign(self, ts_ms: str) -> str:
-        msg = (ts_ms + "GET" + self._ws_path).encode()
         sig = self._priv.sign(
-            msg,
-            padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                        salt_length=padding.PSS.DIGEST_LENGTH),
-            hashes.SHA256(),
-        )
+            (ts_ms + "GET" + self._ws_path).encode(),
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH),
+            hashes.SHA256())
         return base64.b64encode(sig).decode()
 
     def _headers(self) -> dict[str, str]:
         ts = str(int(time.time() * 1000))
-        return {
-            "KALSHI-ACCESS-KEY": self.cfg.secrets.api_key_id,
-            "KALSHI-ACCESS-TIMESTAMP": ts,
-            "KALSHI-ACCESS-SIGNATURE": self._sign(ts),
-        }
+        return {"KALSHI-ACCESS-KEY": self.cfg.secrets.api_key_id,
+                "KALSHI-ACCESS-TIMESTAMP": ts,
+                "KALSHI-ACCESS-SIGNATURE": self._sign(ts)}
 
+    # --- window discovery (REST) ---
     def _current_market(self) -> MarketSnapshot | None:
         try:
             mkts = self._rest.active_btc15m_markets(self.cfg.kalshi.series_ticker)
         except Exception as e:
             print(f"[kalshi ws: market lookup] {e}", file=sys.stderr)
             return None
-        if not mkts:
-            return None
-        return min(mkts, key=lambda m: m.close_time or "")
+        return min(mkts, key=lambda m: m.close_time or "") if mkts else None
 
     async def run(self) -> None:
         loop = asyncio.get_event_loop()
@@ -152,38 +128,52 @@ class KalshiWS:
                 await asyncio.sleep(2)
 
     async def _stream_market(self, m: MarketSnapshot) -> None:
-        from datetime import datetime
-        close_ms = (int(datetime.fromisoformat(
-            m.close_time.replace("Z", "+00:00")).timestamp() * 1000)
-            if m.close_time else None)
-        # reset book for the new window
-        self.book = KalshiBook(ticker=m.ticker, strike=m.floor_strike,
-                               strike_type=m.strike_type, close_ts_ms=close_ms)
-        async with websockets.connect(
-                self.cfg.kalshi.ws_base,
-                additional_headers=self._headers(),
-                ping_interval=10) as ws:
-            await ws.send(json.dumps({
-                "id": 1, "cmd": "subscribe",
-                "params": {"channels": ["orderbook_delta"],
-                           "market_tickers": [m.ticker]},
-            }))
+        # seed top-of-book + metadata from the REST record (so we have a value
+        # before the first ticker change). source='rest_seed' until ticker pushes.
+        self.book = KalshiTop(
+            ticker=m.ticker, strike=m.floor_strike, strike_type=m.strike_type,
+            close_ts_ms=_iso_ms(m.close_time), open_ts_ms=_iso_ms(m.open_time),
+            expiration_value=m.expiration_value,
+            yes_bid=m.yes_bid, yes_ask=m.yes_ask, last_price=m.last_price,
+            last_update_ms=time.time() * 1000, source="rest_seed")
+        close_ms = self.book.close_ts_ms
+
+        async with websockets.connect(self.cfg.kalshi.ws_base,
+                                      additional_headers=self._headers(),
+                                      ping_interval=10) as ws:
+            await ws.send(json.dumps({"id": 1, "cmd": "subscribe",
+                "params": {"channels": ["ticker"], "market_tickers": [m.ticker]}}))
             while True:
-                # roll to next window shortly after close
                 if close_ms and time.time() * 1000 > close_ms + 1000:
-                    return
+                    return  # window closed -> roll to next
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=5)
                 except asyncio.TimeoutError:
                     continue
                 msg = json.loads(raw)
-                t = msg.get("type")
-                if t == "orderbook_snapshot":
-                    self.book.apply_snapshot(msg["msg"])
-                    self.book.last_update_ms = time.time() * 1000
-                elif t == "orderbook_delta":
-                    self.book.apply_delta(msg["msg"])
-                    self.book.last_update_ms = time.time() * 1000
+                if msg.get("type") != "ticker":
+                    continue
+                d = msg.get("msg", {})
+                if d.get("market_ticker") and d["market_ticker"] != m.ticker:
+                    continue
+                self._apply_ticker(d)
+
+    def _apply_ticker(self, d: dict) -> None:
+        def dol(k):
+            v = d.get(k)
+            return float(v) if v not in (None, "") else None
+        yb, ya, last = dol("yes_bid_dollars"), dol("yes_ask_dollars"), dol("price_dollars")
+        if yb is not None:
+            self.book.yes_bid = round(yb, 4)
+        if ya is not None:
+            self.book.yes_ask = round(ya, 4)
+        if last is not None:
+            self.book.last_price = round(last, 4)
+        vol = d.get("volume_fp") or d.get("volume")
+        if vol not in (None, ""):
+            self.book.volume = float(vol)
+        self.book.last_update_ms = time.time() * 1000
+        self.book.source = "ticker"
 
 
 def _read_key(secrets) -> bytes:
@@ -194,7 +184,6 @@ def _read_key(secrets) -> bytes:
 
 
 if __name__ == "__main__":
-    # smoke test: stream live top-of-book for a few seconds
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from config.settings import load_config
@@ -202,13 +191,14 @@ if __name__ == "__main__":
     async def _demo():
         kws = KalshiWS(load_config())
         task = asyncio.create_task(kws.run())
-        for _ in range(10):
+        for _ in range(12):
             await asyncio.sleep(1)
             b = kws.book
-            age = (time.time() * 1000 - b.last_update_ms) if b.last_update_ms else None
-            print(f"{b.ticker} yes_bid/ask={b.yes_bid}/{b.yes_ask} "
-                  f"mid={b.yes_mid} strike={b.strike} "
-                  f"age={age:.0f}ms" if age else f"{b.ticker} (warming up)")
+            age = b.age_ms()
+            print(f"{b.ticker} yes={b.yes_bid}/{b.yes_ask} mid={b.yes_mid} "
+                  f"last={b.last_price} strike={b.strike} crossed={b.crossed} "
+                  f"src={b.source} age={age:.0f}ms" if age is not None
+                  else f"{b.ticker} (warming up)")
         task.cancel()
 
     asyncio.run(_demo())

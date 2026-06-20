@@ -3,105 +3,72 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BRTI · Kalshi Arbitrage Terminal</title>
+  <title>BRTI · Kalshi — trade?</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
   <div id="app">
-    <!-- ===================== STATUS BAR ===================== -->
-    <div id="statusbar">
-      <div class="stat" style="min-width:150px">
-        <span class="label"><span id="conn-dot" class="dot"></span>Market</span>
-        <span class="val mono" id="s-ticker">—</span>
+
+    <!-- header: which market, how long left, live status -->
+    <div class="top">
+      <div class="market" id="market">—</div>
+      <div class="clock-wrap">
+        <span class="clock-label">CLOSES IN</span>
+        <span class="clock" id="clock">--:--</span>
       </div>
-      <div class="stat" id="s-countdown-box">
-        <span class="label">Closes in</span>
-        <span class="val mono" id="s-countdown">--:--</span>
-      </div>
-      <div class="stat big">
-        <span class="label">BRTI proxy</span>
-        <span class="val mono" id="s-brti">—</span>
-      </div>
-      <div class="stat">
-        <span class="label">Strike</span>
-        <span class="val mono" id="s-strike">—</span>
-      </div>
-      <div class="venues" id="s-venues"><!-- venue tiles injected --></div>
-      <div class="stat">
-        <span class="label">YES bid / ask</span>
-        <span class="val mono"><span id="s-bid">—</span> / <span id="s-ask">—</span></span>
-      </div>
-      <div class="stat big">
-        <span class="label">YES mid</span>
-        <span class="val mono" id="s-mid">—</span>
-      </div>
-      <div class="stat">
-        <span class="label">Fair <span class="badge">PROXY</span></span>
-        <span class="val mono" id="s-fair">—</span>
-      </div>
-      <div class="stat big">
-        <span class="label">Signal (mid−fair) <span class="badge">PROXY</span></span>
-        <span class="val mono" id="s-signal">—</span>
-      </div>
-      <div class="stat">
-        <span class="label">BRTI spread</span>
-        <span class="val mono" id="s-spread">—</span>
-      </div>
-      <div class="stat">
-        <span class="label">Kalshi latency</span>
-        <span class="val mono" id="s-age">—</span>
+      <div class="conn"><span id="dot" class="dot"></span><span id="latency">— ms</span></div>
+    </div>
+
+    <!-- THE CALL: the discrepancy + whether to get in -->
+    <div class="verdict-card" id="card">
+      <div class="verdict" id="verdict">CONNECTING…</div>
+      <div class="reason" id="reason">waiting for data</div>
+      <div class="edge-strip">
+        <div class="chip"><span>KALSHI YES</span><b id="yes">—</b></div>
+        <div class="chip"><span>FAIR (proxy)</span><b id="fair">—</b></div>
+        <div class="chip edge" id="edgechip"><span>DISCREPANCY</span><b id="edge">—</b></div>
+        <div class="chip"><span>SPOT vs BRTI</span><b id="lead">—</b></div>
       </div>
     </div>
 
-    <!-- ===================== TOOLBAR ===================== -->
-    <div id="toolbar">
-      <div class="group">
-        <span class="lbl">Window</span>
-        <button class="tbtn" data-win="30">30s</button>
-        <button class="tbtn" data-win="60">1m</button>
-        <button class="tbtn" data-win="300">5m</button>
-        <button class="tbtn" data-win="900">15m</button>
-        <button class="tbtn" data-win="0">Full</button>
+    <!-- TWO separated charts, side by side -->
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-head">
+          <h2>Bitcoin — BRTI index <span class="unit">USD</span></h2>
+          <span class="now" id="brtiNow">—</span>
+        </div>
+        <div class="legend">
+          <span class="k brti">● BRTI</span>
+          <span class="k cb">● Coinbase</span>
+          <span class="k kr">● Kraken</span>
+          <span class="k strike">– – strike</span>
+        </div>
+        <div class="chart" id="priceChart"></div>
       </div>
-      <div class="sep"></div>
-      <div class="group">
-        <button class="tbtn active" id="btn-follow">Auto-follow ●</button>
-      </div>
-      <div class="sep"></div>
-      <div class="group">
-        <span class="lbl">Draw</span>
-        <button class="tbtn" id="btn-hline">＋H Line</button>
-        <button class="tbtn" id="btn-mark">＋Mark</button>
-        <button class="tbtn" id="btn-note">＋Note</button>
-        <button class="tbtn" id="btn-clear">Clear</button>
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <h2>Kalshi odds — YES <span class="unit">%</span></h2>
+          <span class="now" id="oddsNow">—</span>
+        </div>
+        <div class="legend">
+          <span class="k yes">● Kalshi YES (market)</span>
+          <span class="k fairl">– – Fair (proxy)</span>
+        </div>
+        <div class="chart" id="oddsChart"></div>
       </div>
     </div>
 
-    <!-- ===================== CHARTS ===================== -->
-    <div id="charts">
-      <div class="pane-wrap" id="pane-price">
-        <div class="pane-title">Price · USD</div>
-        <div class="legend">
-          <span class="lg-brti">BRTI</span>
-          <span class="lg-cb">Coinbase</span>
-          <span class="lg-kr">Kraken</span>
-        </div>
-        <div class="pane" id="chart-price"></div>
-      </div>
-      <div class="pane-wrap" id="pane-prob">
-        <div class="pane-title">Probability / Signal · 0–100</div>
-        <div class="legend">
-          <span class="lg-mid">YES mid</span>
-          <span class="lg-fair">Fair (proxy)</span>
-          <span class="lg-sig">Signal</span>
-        </div>
-        <div class="pane" id="chart-prob"></div>
-      </div>
+    <div class="foot">
+      Fair value is a Phase-0 <b>proxy</b>, not yet backtested. Rule of thumb:
+      discrepancy ≥ 5¢ with &gt; 60s left = worth a look; under 60s the 60-second
+      settlement average makes late entries unreliable.
     </div>
+
   </div>
-
-  <!-- TradingView lightweight-charts (standalone global: LightweightCharts) -->
-  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
