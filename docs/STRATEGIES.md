@@ -36,15 +36,81 @@ symmetric, so no free directional money.
 
 ---
 
-## Pending (broader research sweep in flight)
-A skeptical web-research pass is investigating: documented retail bots
-(papabrosio et al.), maker rebates / spread capture, favorite-longshot tail
-mispricing, cross-market arb (Kalshi vs Polymarket vs perps/options), predictive
-signals (perp funding, order-flow, options skew), and time-of-day patterns.
-Findings + verdicts will be appended here.
+## S3 — Documented retail bots / public approaches — **LIKELY-NO-EDGE**
+papabrosio/kalshi-btc-15min-trader (explicitly educational, no after-fee P&L;
+its "99% last-minute accuracy" is the regime MMs own), reedjacobp/kalshi-trading-bot
+(paper only, no results), "13 AI agents" dev.to post (+$177, unaudited, no fees,
+not KXBTC15M), Turbine FI "Sharpe 9.46" (vendor marketing; concedes "simulated
+only," excludes fees/slippage). No verified after-fees retail profit anywhere.
+**Verdict: LIKELY-NO-EDGE.**
+
+## S4 — Maker rebates / spread capture — **LIKELY-NO-EDGE**
+No maker rebates exist on Kalshi; best case is zero maker fee, but the crypto
+"rapid" series likely sit in the ~0.44¢ maker-fee bucket (couldn't load the fee
+PDF to confirm). Structural adverse selection: a resting bid fills exactly when
+BTC ticks against it, picked off by faster players with licensed BRTI + colo.
+**Verdict: LIKELY-NO-EDGE.**
+
+## S5 — Favorite-longshot / tail mispricing — **LIKELY-NO-EDGE (buy side) / NEEDS-DATA (sell side)**
+Bürgi-Deng-Whelan 2026 (karlwhelan.com/Papers/Kalshi.pdf, 46k contracts): real
+favorite-longshot bias — <10¢ contracts lose >60% of stake, avg return ≈ −20%,
+worse for takers — BUT on ≥24h events, not 15-min crypto. Buying cheap longshots
+is firmly −EV (fee ≈7% of a 2¢ stake + huge overpricing). Selling longshots /
+buying 88–95¢ favorites shows ~1–2%/trade in SLOW markets, decaying, with 20:1
+tail risk; in 15-min BTC the deep-OOM leg only appears after a clear move (max
+adverse selection). **Verdict: buy-longshot LIKELY-NO-EDGE; favorite/sell-side NEEDS-DATA.**
+
+## S6 — Cross-market arbitrage — **LIKELY-NO-EDGE / basis NEEDS-DATA**
+Polymarket BTC up/down settles on Chainlink point-in-time (NOT a 60s average) →
+"YES@Kalshi + DOWN@Poly < $1" is a basis bet with real variance, not riskless
+arb. Robinhood event contracts run on Kalshi's backend (same book/fee → no arb).
+Deribit's shortest expiry is daily (no 15-min options) → static hedge impossible;
+dynamic digital replication costs many cents (gamma explodes ATM near expiry) >>
+the 1.25–1.75¢ gap. **Verdict: no arb; Kalshi↔Polymarket basis = NEEDS-DATA (relative value).**
+
+## S7 — Predictive signals (funding / OFI / CVD / skew / momentum) — **LIKELY-NO-EDGE**
+Order-flow imbalance & CVD decay in ~1s (HFT regime, can't compete); funding is
+an 8h–daily signal (flat within 15 min); options skew has no intraday
+predictiveness; BTC momentum/mean-reversion R² ≈ 0.16%, "insufficient to extract
+profits" (arXiv 2003.13517). None clear the ~2.7bps / 53.5% hurdle.
+**Verdict: LIKELY-NO-EDGE.**
+
+## S8 — Behavioral / time-of-day — **LIKELY-NO-EDGE / fade-spike NEEDS-DATA**
+Round numbers cluster price but don't predict returns; session effects are a
+VOL axis (push toward 50/50), not direction; best hour ≈52.7% < 53.5%; weekend
+effects not significant net of frictions. Intraday reversal (~3bps of a 0.3%
+move) sits AT the hurdle before decay. Best use is defensive (avoid paying spread
+in the 13–17 UTC high-vol window). **Verdict: LIKELY-NO-EDGE; conditional fade-the-spike = NEEDS-DATA.**
+
+## Liquidity reality (who's on the other side)
+Kalshi runs a formal DMM/Liquidity-Provider program; crypto series typically
+have 1–2 designated providers (Galaxy Digital reported) with reduced/zero fees,
+higher limits, incentive payments, licensed real-time BRTI, and colocation.
+**There is no carved-out lane for a latency-disadvantaged retail Python trader —
+retail is the natural taker feeding ~1.75¢ each way to the MMs.**
+
+---
+
+## Shortlist of "least-dead" ideas testable on FREE settlement labels
+1. **YES base-rate asymmetry — ANSWERED, NO.** Predicted ~50.2–50.7%; our 2,996-
+   window sample shows 48.5% (no positive tilt) and ties 0.03%. Fails the
+   ~51.75% break-even. (See S1/S2.)
+2. **Conditional fade-the-spike reversal — NEEDS-DATA (next cheap test).** Prior-
+   window return = (expiration_value − floor_strike)/floor_strike; test whether
+   next window's outcome reverts >53.5% after costs. Computable from settlement
+   labels alone — a future iteration will run it.
+3. **Kalshi↔Polymarket settlement-reference basis — NEEDS-DATA.** Needs a second
+   venue feed; relative-value, not arb. Lower priority.
 
 ## Running takeaway
-Two of the cheapest structural ideas (tie rule, base-rate bias) are already
-ruled out on free historical data. Consistent with the prior: the obvious
-structural edges aren't there. The live kill-test (proxy lag → executable edge)
-remains the main open question.
+Every cheap structural edge checked (tie rule, base rate) is ruled out on free
+data; every broader candidate is LIKELY-NO-EDGE after fees+spread+latency, with
+a few NEEDS-DATA items that sit AT (not above) the cost hurdle. This strongly
+matches the prior: **no durable retail edge.** The live kill-test (proxy lag →
+executable edge) and the fade-the-spike reversal are the remaining cheap things
+left to falsify.
+
+## Verification gaps (web tools rate-limited this pass)
+Could not load Kalshi's fee PDF (KXBTC15M maker-fee bucket unconfirmed) or the
+rulebook page (verbatim ≥/floor-strike wording); no first-hand P&L thread or
+measured Kalshi–Polymarket BTC spread series surfaced.
