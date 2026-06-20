@@ -132,15 +132,19 @@ async def settlement_watcher(cfg, store: Store, rest: KalshiClient):
     """When a window closes, fetch its settled record to capture the free label
     (expiration_value = closing 60s-avg BRTI, result). Retries until populated."""
     loop = asyncio.get_event_loop()
-    pending: dict[str, int] = {}   # ticker -> close_ts_ms seen
     while True:
         await asyncio.sleep(20)
         t = now_ms()
-        # discover recently-closed windows via the settled filter
+        # Only recently-closed windows (last ~2h). Without min_close_ts the REST
+        # iterator paginates through ALL historical settled markets every cycle
+        # (hundreds of calls -> rate-limit hazard). Historical labels are useless
+        # to us anyway since we have no proxy ticks for them.
+        min_close = int(t / 1000) - 2 * 3600
         try:
             settled = await loop.run_in_executor(
                 None, lambda: list(rest.get_markets(
-                    series_ticker=cfg.kalshi.series_ticker, status="settled", limit=20)))
+                    series_ticker=cfg.kalshi.series_ticker, status="settled",
+                    min_close_ts=min_close, limit=200)))
         except Exception as e:
             print(f"[settlement watcher] {e}", file=sys.stderr)
             continue
