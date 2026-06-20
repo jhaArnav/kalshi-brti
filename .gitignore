@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Research data (versioned separately, not in git)
+*.csv
+*.sqlite
+*.db
+*.parquet
+data_store/
+
+# Secrets / config
+.env
+*.key
+config/secrets.*
+
+# OS
+.DS_Store
