@@ -105,21 +105,24 @@ retail is the natural taker feeding ~1.75¢ each way to the MMs.**
    NOT checked whether the market already prices the reversal into the next
    window's OPEN bid/ask. If it does (MMs surely know about mean-reversion), the
    edge vanishes at executable prices.
-   **Status: the one candidate warranting live testing.** The collector now
-   captures each window's open bid/ask, so over the 48h run we can test the real
-   question: after a big prior move, does buying the reversal side AT THE OPEN
-   PRICE clear costs, out-of-sample? Default expectation: the market prices it in.
+   **UPDATE — OOS split KILLS it.** Re-ran on 3,994 pairs (999 big-move windows)
+   with a train/test split: ALL 53.6% (CI [0.505,0.566], point estimate AT the
+   hurdle), TRAIN (1st half) 50.8% (coin flip), TEST (2nd half) 54.2% (CI lower
+   0.498, below hurdle). Unstable across halves, never significantly above 53.5%,
+   and that's GROSS (entry@50c, no spread, market not pricing it in). The earlier
+   55.1% was a 749-window artifact. **Verdict: LIKELY-NO-EDGE.** Live open-price
+   test is now low priority — the gross signal doesn't even hold.
 3. **Kalshi↔Polymarket settlement-reference basis — NEEDS-DATA.** Needs a second
    venue feed; relative-value, not arb. Lower priority.
 
 ## Running takeaway
-Tie rule and base rate are dead on free data; the 7 broader candidates are all
-LIKELY-NO-EDGE after costs. The single exception: **fade-the-spike** shows a
-suggestive 55.1% reversal after big prior moves (in-sample, CI lower bound still
-below the hurdle, real entry prices untested). It is the ONE thing worth testing
-live. Everything else matches the prior — no durable retail edge. Open tests:
-(a) live kill-test (proxy lag → executable edge), (b) fade-the-spike at real
-open prices, out-of-sample.
+Every candidate is now LIKELY-NO-EDGE or DEAD. Tie rule and base rate: dead on
+free data. The 7 broader candidates: no-edge after costs. Fade-the-spike looked
+suggestive at 749 windows (55.1%) but **collapsed under an OOS split at 3,994
+windows** (50.8% train / 54.2% test, never significantly above the hurdle, gross).
+This matches the prior cleanly: **no durable retail edge found.** The only test
+still open is the live kill-test (proxy lag → executable edge), which so far
+(n=2 windows) also shows negative EV. Expectation: it confirms no edge.
 
 ## Verification gaps (web tools rate-limited this pass)
 Could not load Kalshi's fee PDF (KXBTC15M maker-fee bucket unconfirmed) or the
